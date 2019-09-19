@@ -68,6 +68,9 @@ pub const DOM_KEY_LOCATION_STANDARD: c_ulong = 0x00;
 pub const DOM_KEY_LOCATION_LEFT: c_ulong = 0x01;
 pub const DOM_KEY_LOCATION_RIGHT: c_ulong = 0x02;
 pub const DOM_KEY_LOCATION_NUMPAD: c_ulong = 0x03;
+pub const DOM_DELTA_PIXEL: c_ulong = 0x00;
+pub const DOM_DELTA_LINE: c_ulong = 0x01;
+pub const DOM_DELTA_PAGE: c_ulong = 0x02;
 
 pub type em_callback_func = Option<unsafe extern "C" fn()>;
 
@@ -94,6 +97,16 @@ pub type em_fullscreenchange_callback_func = Option<unsafe extern "C" fn(
 pub type em_touch_callback_func = Option<unsafe extern "C" fn(
     eventType: c_int,
     touchEvent: *const EmscriptenTouchEvent,
+    userData: *mut c_void) -> EM_BOOL>;
+
+pub type em_wheel_callback_func = Option<unsafe extern "C" fn(
+    eventType: c_int,
+    touchEvent: *const EmscriptenWheelEvent,
+    userData: *mut c_void) -> EM_BOOL>;
+
+pub type em_ui_callback_func = Option<unsafe extern "C" fn(
+    eventType: c_int,
+    touchEvent: *const EmscriptenUiEvent,
     userData: *mut c_void) -> EM_BOOL>;
 
 #[repr(C)]
@@ -218,15 +231,42 @@ fn bindgen_test_layout_EmscriptenPointerlockChangeEvent() {
     assert_eq!(mem::align_of::<EmscriptenPointerlockChangeEvent>(), 4usize);
 }
 
-extern "C" {
-    pub fn emscripten_set_canvas_size(
-        width: c_int, height: c_int)
-        -> EMSCRIPTEN_RESULT;
+#[repr(C)]
+#[derive(Debug)]
+pub struct EmscriptenWheelEvent {
+    pub mouse: EmscriptenMouseEvent,
+    pub deltaX: c_double,
+    pub deltaY: c_double,
+    pub deltaZ: c_double,
+    pub deltaMode: c_ulong,
+}
 
-    pub fn emscripten_get_canvas_size(
-        width: *mut c_int, height: *mut c_int,
-        is_fullscreen: *mut c_int)
-        -> EMSCRIPTEN_RESULT;
+#[repr(C)]
+#[derive(Debug)]
+pub struct EmscriptenUiEvent {
+    pub detail: c_long,
+    pub documentBodyClientWidth: c_int,
+    pub documentBodyClientHeight: c_int,
+    pub windowInnerWidth: c_int,
+    pub windowInnerHeight: c_int,
+    pub windowOuterWidth: c_int,
+    pub windowOuterHeight: c_int,
+    pub scrollTop: c_int,
+    pub scrollLeft: c_int,
+}
+
+extern "C" {
+	pub fn emscripten_set_canvas_element_size(
+		target: *const std::os::raw::c_char,
+		width: c_int,
+		height: c_int,
+	) -> EMSCRIPTEN_RESULT;
+
+    pub fn emscripten_get_canvas_element_size(
+		target: *const std::os::raw::c_char,
+		width: *mut c_int,
+        height: *mut c_int,
+	) -> EMSCRIPTEN_RESULT;
 
     pub fn emscripten_set_element_css_size(
         target: *const c_char, width: c_double,
@@ -311,4 +351,18 @@ extern "C" {
         target: *const c_char, userData: *mut c_void,
         useCapture: c_int, callback: em_touch_callback_func)
         -> EMSCRIPTEN_RESULT;
+
+    pub fn emscripten_set_wheel_callback(
+        target: *const c_char,
+        userData: *mut c_void,
+        useCapture: EM_BOOL,
+        callback: em_wheel_callback_func,
+    ) -> EMSCRIPTEN_RESULT;
+
+    pub fn emscripten_set_resize_callback(
+        target: *const c_char,
+        userData: *mut c_void,
+        useCapture: EM_BOOL,
+        callback: em_ui_callback_func,
+    ) -> EMSCRIPTEN_RESULT;
 }

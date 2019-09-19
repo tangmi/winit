@@ -18,6 +18,24 @@ fn get_hidpi_factor() -> f64 {
     unsafe { ffi::emscripten_get_device_pixel_ratio() as f64 }
 }
 
+fn set_inner_size(size: LogicalSize) {
+    unsafe {
+        let dpi_factor = get_hidpi_factor();
+        let physical = PhysicalSize::from_logical(size, dpi_factor);
+        let (width, height): (u32, u32) = physical.into();
+        ffi::emscripten_set_element_css_size(
+            ptr::null(),
+            width as c_double,
+            height as c_double,
+        );
+        ffi::emscripten_set_canvas_element_size(
+            ptr::null(),
+            width as c_int,
+            height as c_int,
+        );
+    }
+}
+
 #[derive(Clone, Default)]
 pub struct PlatformSpecificWindowBuilderAttributes;
 
@@ -287,6 +305,22 @@ extern "C" fn keyboard_callback(
                         },
                     },
                 });
+
+                // Windows dispatches a WM_CHAR, for key KeyDown event that is sent through TranslateMessage.
+                // The effect of this is a KeyDown and a ReceivedCharacter event for each valid unicode input.
+                if let Ok(key) = {
+                    let input = (*event).key;
+                    let slice = &input[0..input.iter().take_while(|x| **x != 0).count()];
+                    str::from_utf8(mem::transmute::<_, &[u8]>(slice))
+                } {
+                    // Since emscripten outputs stuff like "ArrowLeft" and "Enter", we make the assumption that a single letter input is what we want.
+                    if key.chars().count() == 1 {
+                        queue.lock().unwrap().push_back(::Event::WindowEvent {
+                            window_id: ::WindowId(WindowId(0)),
+                            event: ::WindowEvent::ReceivedCharacter(key.chars().next().unwrap()),
+                        });
+                    }
+                }
             },
             ffi::EMSCRIPTEN_EVENT_KEYUP => {
                 queue.lock().unwrap().push_back(::Event::WindowEvent {
@@ -370,6 +404,81 @@ unsafe extern "C" fn pointerlockchange_callback(
     ffi::EM_FALSE
 }
 
+#[allow(non_snake_case)]
+extern "C" fn wheel_callback(
+    event_type: c_int,
+    event: *const ffi::EmscriptenWheelEvent,
+    event_queue: *mut c_void) -> ffi::EM_BOOL
+{
+    unsafe {
+        let queue: &Mutex<VecDeque<::Event>> = mem::transmute(event_queue);
+
+        queue.lock().unwrap().push_back(::Event::WindowEvent {
+            window_id: ::WindowId(WindowId(0)),
+            event: ::WindowEvent::MouseWheel {
+                device_id: ::DeviceId(DeviceId),
+                delta: match (*event).deltaMode {
+                    ffi::DOM_DELTA_PIXEL => ::events::MouseScrollDelta::PixelDelta(::dpi::LogicalPosition {
+                        x: -(*event).deltaX, // TODO: Unsure if this should be negated...
+                        y: -(*event).deltaY,
+                    }),
+                    ffi::DOM_DELTA_LINE => ::events::MouseScrollDelta::LineDelta((*event).deltaX as f32, (*event).deltaY as f32),
+                    ffi::DOM_DELTA_PAGE => ::events::MouseScrollDelta::LineDelta((*event).deltaX as f32, (*event).deltaY as f32), // No per-page scroll
+                    _ => return ffi::EMSCRIPTEN_RESULT_INVALID_PARAM,
+                },
+                phase: ::events::TouchPhase::Moved,
+                modifiers: ::ModifiersState {
+                    shift: (*event).mouse.shiftKey == ffi::EM_TRUE,
+                    ctrl: (*event).mouse.ctrlKey == ffi::EM_TRUE,
+                    alt: (*event).mouse.altKey == ffi::EM_TRUE,
+                    logo: (*event).mouse.metaKey == ffi::EM_TRUE,
+                },
+            },
+        });
+
+        ffi::EMSCRIPTEN_RESULT_SUCCESS
+    }
+}
+
+#[allow(non_snake_case)]
+extern "C" fn ui_callback(
+    event_type: c_int,
+    event: *const ffi::EmscriptenUiEvent,
+    event_queue: *mut c_void) -> ffi::EM_BOOL
+{
+    unsafe {
+        let queue: &Mutex<VecDeque<::Event>> = mem::transmute(event_queue);
+
+        match event_type {
+            ffi::EMSCRIPTEN_EVENT_RESIZE => {
+                let new_size = ::dpi::LogicalSize {
+                    width: (*event).windowInnerWidth as f64,
+                    height: (*event).windowInnerHeight as f64,
+                };
+                
+                // Force the canvas size to be the window size.
+                set_inner_size(new_size);
+
+                queue.lock().unwrap().push_back(::Event::WindowEvent {
+                    window_id: ::WindowId(WindowId(0)),
+                    event: ::WindowEvent::Resized(new_size),
+                });
+
+                ffi::EMSCRIPTEN_RESULT_SUCCESS
+            },
+
+            ffi::EMSCRIPTEN_EVENT_SCROLL => {
+                unimplemented!();
+                ffi::EMSCRIPTEN_RESULT_FAILED
+            },
+
+            _ => {
+                ffi::EMSCRIPTEN_RESULT_INVALID_PARAM
+            }
+        }
+    }
+}
+
 fn em_try(res: ffi::EMSCRIPTEN_RESULT) -> Result<(), String> {
     match res {
         ffi::EMSCRIPTEN_RESULT_SUCCESS | ffi::EMSCRIPTEN_RESULT_DEFERRED => Ok(()),
@@ -418,6 +527,12 @@ impl Window {
                 .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
             em_try(ffi::emscripten_set_touchcancel_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(touch_callback)))
                 .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
+            em_try(ffi::emscripten_set_wheel_callback(DOCUMENT_NAME.as_ptr() as *const c_char, mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(wheel_callback)))
+                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
+
+            // Note: target needs to = 0 to get the events for the `Window` object.
+            em_try(ffi::emscripten_set_resize_callback(ptr::null(), mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(ui_callback)))
+                .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
         }
 
         if attribs.fullscreen.is_some() {
@@ -463,9 +578,7 @@ impl Window {
         unsafe {
             let mut width = 0;
             let mut height = 0;
-            let mut fullscreen = 0;
-
-            if ffi::emscripten_get_canvas_size(&mut width, &mut height, &mut fullscreen)
+            if ffi::emscripten_get_canvas_element_size(ptr::null(), &mut width, &mut height)
                 != ffi::EMSCRIPTEN_RESULT_SUCCESS
             {
                 None
@@ -484,16 +597,7 @@ impl Window {
 
     #[inline]
     pub fn set_inner_size(&self, size: LogicalSize) {
-        unsafe {
-            let dpi_factor = self.get_hidpi_factor();
-            let physical = PhysicalSize::from_logical(size, dpi_factor);
-            let (width, height): (u32, u32) = physical.into();
-            ffi::emscripten_set_element_css_size(
-                ptr::null(),
-                width as c_double,
-                height as c_double,
-            );
-        }
+        set_inner_size(size);
     }
 
     #[inline]
