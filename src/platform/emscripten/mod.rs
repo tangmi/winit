@@ -20,14 +20,16 @@ fn get_hidpi_factor() -> f64 {
 
 fn set_inner_size(size: LogicalSize) {
     unsafe {
+        // Note: CSS element size is in logical units, while the CanvasElement's size is in pixels.
+        ffi::emscripten_set_element_css_size(
+            ptr::null(),
+            size.width as c_double,
+            size.height as c_double,
+        );
+
         let dpi_factor = get_hidpi_factor();
         let physical = PhysicalSize::from_logical(size, dpi_factor);
         let (width, height): (u32, u32) = physical.into();
-        ffi::emscripten_set_element_css_size(
-            ptr::null(),
-            width as c_double,
-            height as c_double,
-        );
         ffi::emscripten_set_canvas_element_size(
             ptr::null(),
             width as c_int,
@@ -226,10 +228,10 @@ extern "C" fn mouse_callback(
 
         match event_type {
             ffi::EMSCRIPTEN_EVENT_MOUSEMOVE => {
-                let dpi_factor = get_hidpi_factor();
-                let position = LogicalPosition::from_physical(
-                    ((*event).canvasX as f64, (*event).canvasY as f64),
-                    dpi_factor,
+                // Event's `canvasN` are in CSS pixels, which are logical units.
+                let position = LogicalPosition::new(
+                    (*event).canvasX as f64, 
+                    (*event).canvasY as f64,
                 );
                 queue.lock().unwrap().push_back(::Event::WindowEvent {
                     window_id: ::WindowId(WindowId(0)),
