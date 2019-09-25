@@ -68,6 +68,7 @@ mod event;
 mod events_loop;
 mod icon;
 mod monitor;
+mod pointer;
 mod raw_input;
 mod util;
 mod window;

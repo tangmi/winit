@@ -68,3 +68,6 @@ smithay-client-toolkit = "0.4.3"
 x11-dl = "2.18.3"
 parking_lot = "0.9"
 percent-encoding = "2.0"
+
+[target.'cfg(target_os = "emscripten")'.dependencies]
+stdweb = "0.4"

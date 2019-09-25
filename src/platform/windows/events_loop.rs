@@ -1051,6 +1051,32 @@ unsafe fn callback_inner(
             0
         }
 
+        // TODO: how do we get Pointer cancelled?
+        pointer_msg @ winuser::WM_POINTERDOWN
+        | pointer_msg @ winuser::WM_POINTERUPDATE
+        | pointer_msg @ winuser::WM_POINTERUP => {
+            let coalesced_events = ::platform::platform::pointer::get_pointer_coalesced_events(
+                u32::from(LOWORD(wparam as DWORD)),
+                event::get_key_mods(),
+                get_hwnd_scale_factor(window),
+                match pointer_msg {
+                    winuser::WM_POINTERDOWN => ::events::PointerPhase::Down,
+                    winuser::WM_POINTERUPDATE => ::events::PointerPhase::Move,
+                    winuser::WM_POINTERUP => ::events::PointerPhase::Up,
+                    _ => unreachable!(),
+                },
+            );
+
+            for event in coalesced_events {
+                send_event(Event::WindowEvent {
+                    window_id: SuperWindowId(WindowId(window)),
+                    event: ::events::WindowEvent::Pointer(event),
+                });
+            }
+
+            0
+        }
+
         winuser::WM_SETFOCUS => {
             use events::WindowEvent::Focused;
             send_event(Event::WindowEvent {

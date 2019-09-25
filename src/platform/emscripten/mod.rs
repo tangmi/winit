@@ -1,6 +1,7 @@
 #![cfg(target_os = "emscripten")]
 
 mod ffi;
+mod pointer;
 
 use std::{mem, ptr, str};
 use std::cell::RefCell;
@@ -536,6 +537,8 @@ impl Window {
             em_try(ffi::emscripten_set_resize_callback(ptr::null(), mem::transmute(&*window.window.events), ffi::EM_FALSE, Some(ui_callback)))
                 .map_err(|e| ::CreationError::OsError(format!("emscripten error: {}", e)))?;
         }
+
+        pointer::register(window.window.clone());
 
         if attribs.fullscreen.is_some() {
             unsafe {

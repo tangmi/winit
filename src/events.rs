@@ -115,7 +115,67 @@ pub enum WindowEvent {
     ///
     /// For more information about DPI in general, see the [`dpi`](dpi/index.html) module.
     HiDpiFactorChanged(f64),
+
+    Pointer(Pointer),
 }
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum PointerType {
+    Mouse,
+    Touch,
+    Pen
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum PointerPhase {
+    Down,
+    Move,
+    Up,
+    Cancel,
+}
+
+#[derive(Copy, Clone, Debug, PartialEq)]
+pub enum PointerButton {
+    None,
+    Left,
+    Right,
+    Middle,
+    Other(u8),
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Pointer {
+    pub id: u32,
+    pub position: LogicalPosition,
+    pub modifiers: ModifiersState,
+    pub phase: PointerPhase,
+
+    /// TODO "is the primary pointer for this input type"?
+    pub is_primary: bool,
+    pub pointer_type: PointerType,
+
+    /// defaults to (0,0), unlike web pointer events
+    pub size: LogicalSize,
+
+    /// [0, 1]
+    pub pressure: f64,
+
+    /// [0, 1]
+    pub tangential_pressure: f64,
+
+    // [-1, 1]
+    pub tilt_x: f64,
+
+    // [-1, 1]
+    pub tilt_y: f64,
+
+    /// [0, 2pi]
+    pub twist: f64,
+
+    /// TODO: not currently set
+    pub button: PointerButton,
+}
+
 
 /// Represents raw hardware events that are not associated with any particular window.
 ///
