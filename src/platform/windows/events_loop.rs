@@ -1055,7 +1055,7 @@ unsafe fn callback_inner(
         pointer_msg @ winuser::WM_POINTERDOWN
         | pointer_msg @ winuser::WM_POINTERUPDATE
         | pointer_msg @ winuser::WM_POINTERUP => {
-            let coalesced_events = ::platform::platform::pointer::get_pointer_coalesced_events(
+            let coalesced_events = ::platform::platform::pointer::get_pointer_events(
                 u32::from(LOWORD(wparam as DWORD)),
                 event::get_key_mods(),
                 get_hwnd_scale_factor(window),
@@ -1073,6 +1073,48 @@ unsafe fn callback_inner(
                     event: ::events::WindowEvent::Pointer(event),
                 });
             }
+
+            // let mut pointer_msg = pointer_msg;
+            // let mut wparam = wparam;
+
+            // loop {
+            //     let coalesced_events = ::platform::platform::pointer::get_pointer_events(
+            //         u32::from(LOWORD(wparam as DWORD)),
+            //         event::get_key_mods(),
+            //         get_hwnd_scale_factor(window),
+            //         match pointer_msg {
+            //             winuser::WM_POINTERDOWN => ::events::PointerPhase::Down,
+            //             winuser::WM_POINTERUPDATE => ::events::PointerPhase::Move,
+            //             winuser::WM_POINTERUP => ::events::PointerPhase::Up,
+            //             _ => unreachable!(),
+            //         },
+            //     );
+
+            //     for event in coalesced_events {
+            //         send_event(Event::WindowEvent {
+            //             window_id: SuperWindowId(WindowId(window)),
+            //             event: ::events::WindowEvent::Pointer(event),
+            //         });
+            //     }
+
+            //     // windows doesn't seem to coalesce pen input, so do it ourselves
+            //     let mut msg = std::mem::MaybeUninit::uninit();
+            //     let res = winuser::PeekMessageW(
+            //         msg.as_mut_ptr(),
+            //         window,
+            //         winuser::WM_POINTERUPDATE,
+            //         winuser::WM_POINTERUP,
+            //         winuser::PM_REMOVE | winuser::PM_NOYIELD,
+            //     );
+
+            //     if res != 0 {
+            //         let msg = msg.assume_init();
+            //         pointer_msg = msg.message;
+            //         wparam = msg.wParam;
+            //     } else {
+            //         break;
+            //     }
+            // }
 
             0
         }
